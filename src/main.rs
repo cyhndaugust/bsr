@@ -1,3 +1,3 @@
 fn main() {
-    bsr::run();
+    bsr::handles::run();
 }

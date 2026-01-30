@@ -1,6 +1,6 @@
 use anyhow::anyhow;
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Parser)]
 #[command(version = env!("CARGO_PKG_VERSION"))]
@@ -12,7 +12,7 @@ pub struct Args {
 
 #[derive(Debug, Subcommand)]
 pub enum Subcommands {
-    #[command(about = "Add a directory to the Bisheng project index.")]
+    #[command(about = "Add a directory to retrieve all Bisheng project.")]
     Add {
         #[arg(help = "A directory.")]
         #[arg(value_parser = validate_dir)]
@@ -22,11 +22,9 @@ pub enum Subcommands {
 
 /// 验证参数 是否是目录
 fn validate_dir(dir: &str) -> anyhow::Result<PathBuf> {
-    let path = PathBuf::from(dir);
-
+    let path = Path::new(dir);
     if !path.exists() {
         return Err(anyhow!("Invalid directory"));
     }
-
-    Ok(path)
+    Ok(path.to_path_buf())
 }

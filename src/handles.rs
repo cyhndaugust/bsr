@@ -1,8 +1,10 @@
 use crate::args::{Args, Subcommands};
 use crate::storage::{read_project_file, write_project_file};
-use crate::types::DirectoryNode;
+use crate::types::{DirectoryNode, ProjectOption};
 use crate::utils::{is_bisheng_project, is_hidden_entry, path_to_dir_string};
+use anyhow::Ok;
 use clap::Parser;
+use inquire::Select;
 use std::fs;
 use std::path::PathBuf;
 
@@ -25,6 +27,9 @@ fn handle_subcommands(args: Args) -> anyhow::Result<()> {
                 Subcommands::Add { dir } => {
                     handle_cmd_add(dir)?;
                 }
+                Subcommands::List => {
+                    handle_cmd_list()?;
+                }
             }
 
             Ok(())
@@ -35,20 +40,54 @@ fn handle_subcommands(args: Args) -> anyhow::Result<()> {
 /// 子命令 Add
 fn handle_cmd_add(dir: PathBuf) -> anyhow::Result<()> {
     let path = fs::canonicalize(&dir)?;
-    // println!("Add directory: {:?}, {:?}", dir, path);
 
-    if let Some(saved_data) = read_project_file()? {
-        println!("saved_data={:?}", saved_data);
-    };
-
-    // 直接调用递归函数，由内部统一判断
     if let Some(directory_node) = get_bs_dir(path)? {
-        write_project_file(directory_node)?;
+        if let Err(err) = write_project_file(directory_node) {
+            eprintln!("Error writing project file: {}", err);
+        }
     } else {
         eprintln!("No Bisheng projects found in the specified directory.");
     }
 
     Ok(())
+}
+
+/// 子命令 List
+fn handle_cmd_list() -> anyhow::Result<()> {
+    if let Some(saved_data) = read_project_file()? {
+        let mut projects = vec![];
+        flatten_projects(&saved_data, &mut projects);
+
+        if projects.is_empty() {
+            eprintln!("No Bisheng projects found in the specified directory.");
+            return Ok(());
+        }
+
+        let selected = Select::new("Select a project to add:", projects).prompt()?;
+        println!("Selected project path: {:?}", selected.path);
+    };
+
+    Ok(())
+}
+
+/// 递归遍历目录树，将匹配的项目拉齐到一个向量中
+fn flatten_projects(node: &DirectoryNode, projects: &mut Vec<ProjectOption>) {
+    if node.matched {
+        let parent_path = node
+            .path
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| PathBuf::from("/"));
+        projects.push(ProjectOption {
+            name: node.name.clone(),
+            path: node.path.clone(),
+            parent_path,
+        });
+    }
+
+    for child in &node.child_dirs {
+        flatten_projects(child, projects);
+    }
 }
 
 /// 获取Bisheng目录

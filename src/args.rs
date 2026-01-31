@@ -18,6 +18,9 @@ pub enum Subcommands {
         #[arg(value_parser = validate_dir)]
         dir: PathBuf,
     },
+    #[command(about = "List all added directories.")]
+    #[command(alias = "ls")]
+    List,
 }
 
 /// 验证参数 是否是目录

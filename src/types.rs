@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{fmt::Display, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -20,5 +20,19 @@ impl DirectoryNode {
             matched: false,
             child_dirs: vec![],
         }
+    }
+}
+
+/// 项目选项（用于选择项目）
+#[derive(Clone)]
+pub struct ProjectOption {
+    pub name: String,
+    pub path: PathBuf,
+    pub parent_path: PathBuf,
+}
+
+impl Display for ProjectOption {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} [{}]", self.name, self.parent_path.to_string_lossy())
     }
 }

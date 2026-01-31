@@ -1,7 +1,7 @@
 use crate::args::{Args, Subcommands};
 use crate::storage::{read_project_file, write_project_file};
 use crate::types::{DirectoryNode, ProjectOption};
-use crate::utils::{is_bisheng_project, is_hidden_entry, path_to_dir_string};
+use crate::utils::{get_tilde_path, is_bisheng_project, is_hidden_entry, path_to_dir_string};
 use anyhow::Ok;
 use clap::Parser;
 use inquire::Select;
@@ -64,7 +64,10 @@ fn handle_cmd_list() -> anyhow::Result<()> {
         }
 
         let selected = Select::new("Select a project to add:", projects).prompt()?;
-        println!("Selected project path: {:?}", selected.path);
+        println!(
+            "Selected project path: {:?}",
+            get_tilde_path(&selected.path)
+        );
     };
 
     Ok(())
@@ -81,7 +84,7 @@ fn flatten_projects(node: &DirectoryNode, projects: &mut Vec<ProjectOption>) {
         projects.push(ProjectOption {
             name: node.name.clone(),
             path: node.path.clone(),
-            parent_path,
+            parent_path: get_tilde_path(&parent_path),
         });
     }
 

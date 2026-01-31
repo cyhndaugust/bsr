@@ -3,11 +3,12 @@ use std::path::Path;
 
 /// 判断项目是否是Bisheng项目
 pub fn is_bisheng_project(path: &Path) -> bool {
-    let condition1 = path.join("srcTemplate");
+    // let condition1 = path.join("srcTemplate");
     let condition2 = path.join("package.json");
 
     // 满足条件证明是Bisheng项目
-    condition1.exists() && condition2.exists()
+    /* condition1.exists() &&  */
+    condition2.exists()
 }
 
 /// 是否是隐藏文件或目录

@@ -36,31 +36,33 @@ fn handle_cmd_add(dir: PathBuf) -> anyhow::Result<()> {
     let path = fs::canonicalize(&dir)?;
     // println!("Add directory: {:?}, {:?}", dir, path);
 
-    let matched = is_bisheng_project(&path);
-
-    // 递归读取目录
-    let directory_node = get_bs_dir(path, matched)?;
-    println!("{:?}", directory_node);
+    // 直接调用递归函数，由内部统一判断
+    if let Some(directory_node) = get_bs_dir(path)? {
+        println!("{:#?}", directory_node);
+    } else {
+        println!("No Bisheng projects found in the specified directory.");
+    }
 
     Ok(())
 }
 
 /// 获取Bisheng目录
-fn get_bs_dir(path: PathBuf, matched: bool) -> anyhow::Result<DirectoryNode> {
+fn get_bs_dir(path: PathBuf) -> anyhow::Result<Option<DirectoryNode>> {
     let name = path_to_dir_string(&path);
-    let mut child_dirs = vec![];
+    let matched = is_bisheng_project(&path);
 
-    // 当前目录就是Bisheng项目
+    // 1. 如果当前目录匹配成功，直接返回该节点，不再递归子目录
     if matched {
-        println!("Bisheng Project");
-        return Ok(DirectoryNode {
+        return Ok(Some(DirectoryNode {
             path,
             name,
             matched,
-            child_dirs,
-        });
+            child_dirs: vec![],
+        }));
     }
 
+    // 2. 如果当前不匹配，尝试读取子目录
+    let mut child_dirs = vec![];
     let entries = fs::read_dir(&path)?;
 
     for entry in entries {
@@ -71,30 +73,22 @@ fn get_bs_dir(path: PathBuf, matched: bool) -> anyhow::Result<DirectoryNode> {
         if !file_type.is_dir() || is_hidden_entry(&entry) {
             continue;
         }
-        // println!("entry={:?}", entry);
 
-        let p = entry.path();
-        // 是否匹配到了
-        let _matched = is_bisheng_project(&p);
-
-        if _matched {
-            let n = path_to_dir_string(&p);
-            child_dirs.push(DirectoryNode {
-                path: p,
-                name: n,
-                matched: true,
-                child_dirs: vec![],
-            });
-        } else {
-            let child_dir = get_bs_dir(p, false)?;
-            child_dirs.push(child_dir);
+        if let Some(child_node) = get_bs_dir(entry.path())? {
+            child_dirs.push(child_node);
         }
     }
 
-    Ok(DirectoryNode {
+    // 3. 关键逻辑：如果当前目录不匹配，且没有任何子目录包含项目，则返回 None
+    if child_dirs.is_empty() {
+        return Ok(None);
+    }
+
+    // 4. 当前目录不匹配，但有子目录包含项目，返回当前节点以维持树结构
+    Ok(Some(DirectoryNode {
         path,
         name,
-        matched,
+        matched: false,
         child_dirs,
-    })
+    }))
 }

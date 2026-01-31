@@ -1,4 +1,5 @@
 use crate::args::{Args, Subcommands};
+use crate::storage::{read_project_file, write_project_file};
 use crate::types::DirectoryNode;
 use crate::utils::{is_bisheng_project, is_hidden_entry, path_to_dir_string};
 use clap::Parser;
@@ -36,11 +37,15 @@ fn handle_cmd_add(dir: PathBuf) -> anyhow::Result<()> {
     let path = fs::canonicalize(&dir)?;
     // println!("Add directory: {:?}, {:?}", dir, path);
 
+    if let Some(saved_data) = read_project_file()? {
+        println!("saved_data={:?}", saved_data);
+    };
+
     // 直接调用递归函数，由内部统一判断
     if let Some(directory_node) = get_bs_dir(path)? {
-        println!("{:#?}", directory_node);
+        write_project_file(directory_node)?;
     } else {
-        println!("No Bisheng projects found in the specified directory.");
+        eprintln!("No Bisheng projects found in the specified directory.");
     }
 
     Ok(())

@@ -1,7 +1,9 @@
 use std::path::PathBuf;
 
+use serde::{Deserialize, Serialize};
+
 /// 目录节点（树形结构）
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DirectoryNode {
     pub path: PathBuf,                  // 绝对路径
     pub name: String,                   // 当前目录名称

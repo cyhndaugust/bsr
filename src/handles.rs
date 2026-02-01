@@ -135,7 +135,7 @@ fn handle_cmd_status(dir: PathBuf, all: bool) -> anyhow::Result<()> {
 
                     if !status.is_clean {
                         for file in status.modified_files {
-                            println!("  {} {}", "-".red(), file);
+                            println!("  {} {}", "-", file);
                         }
                     }
                 }

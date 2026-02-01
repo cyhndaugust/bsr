@@ -27,6 +27,14 @@ pub enum Subcommands {
         #[arg(value_parser = validate_dir)]
         #[arg(default_value = ".")]
         dir: PathBuf,
+
+        #[arg(
+            short,
+            long,
+            help = "Show all repositories, including clean ones.",
+            default_value_t = false
+        )]
+        all: bool,
     },
 }
 

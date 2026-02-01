@@ -1,9 +1,13 @@
 use crate::args::{Args, Subcommands};
 use crate::storage::{read_project_file, write_project_file};
 use crate::types::{DirectoryNode, ProjectOption};
-use crate::utils::{get_tilde_path, is_bisheng_project, is_hidden_entry, path_to_dir_string};
+use crate::utils::{
+    get_git_status, get_tilde_path, is_bisheng_project, is_git_repo, is_hidden_entry,
+    path_to_dir_string,
+};
 use anyhow::{Ok, anyhow};
 use clap::Parser;
+use colored::Colorize;
 use inquire::Select;
 use std::fs;
 use std::path::PathBuf;
@@ -30,8 +34,8 @@ fn handle_subcommands(args: Args) -> anyhow::Result<()> {
                 Subcommands::List => {
                     handle_cmd_list()?;
                 }
-                Subcommands::Status { dir } => {
-                    handle_cmd_status(dir)?;
+                Subcommands::Status { dir, all } => {
+                    handle_cmd_status(dir, all)?;
                 }
             }
 
@@ -79,11 +83,95 @@ fn handle_cmd_list() -> anyhow::Result<()> {
 
 /// 子命令 Status
 /// 列出所有originSource下的组件的git状态
-fn handle_cmd_status(dir: PathBuf) -> anyhow::Result<()> {
+fn handle_cmd_status(dir: PathBuf, all: bool) -> anyhow::Result<()> {
     let origin_source = dir.join("originSource");
 
     if !origin_source.exists() {
         return Err(anyhow!("Not found Bisheng Dependencies"));
+    }
+
+    println!(
+        "\n{}",
+        format!(
+            "Checking git status in: {:?}",
+            get_tilde_path(&origin_source)
+        )
+        .bold()
+    );
+
+    let mut repos = Vec::new();
+    find_git_repos(&origin_source, &mut repos)?;
+
+    if repos.is_empty() {
+        println!("{}", "No git repositories found in originSource.".yellow());
+    } else {
+        let mut shown_count = 0;
+        for path in repos {
+            let repo_name = path_to_dir_string(&path);
+
+            match get_git_status(&path) {
+                anyhow::Result::Ok(status) => {
+                    if !all && status.is_clean {
+                        continue;
+                    }
+
+                    shown_count += 1;
+                    let status_str = if status.is_clean {
+                        "clean".green()
+                    } else {
+                        "modified".red()
+                    };
+
+                    println!(
+                        "\n{} [{}] ({})",
+                        repo_name.bold().cyan(),
+                        status.branch.blue(),
+                        status_str
+                    );
+
+                    if status.stash_count > 0 {
+                        println!("  {} {} stashes", "→".yellow(), status.stash_count);
+                    }
+
+                    if !status.is_clean {
+                        for file in status.modified_files {
+                            println!("  {} {}", "-".red(), file);
+                        }
+                    }
+                }
+                Err(e) => {
+                    println!("{} {}: {}", "Error".red(), repo_name, e);
+                }
+            }
+        }
+
+        if shown_count == 0 && !all {
+            println!(
+                "\n{}",
+                "All repositories are clean. Use --all to show them.".green()
+            );
+        }
+    }
+
+    println!();
+    Ok(())
+}
+
+/// 递归查找 git 仓库
+fn find_git_repos(path: &PathBuf, repos: &mut Vec<PathBuf>) -> anyhow::Result<()> {
+    if is_git_repo(path) {
+        repos.push(path.clone());
+        return Ok(());
+    }
+
+    let entries = fs::read_dir(path)?;
+    for entry in entries {
+        let entry = entry?;
+        let child_path = entry.path();
+
+        if child_path.is_dir() && !is_hidden_entry(&entry) {
+            find_git_repos(&child_path, repos)?;
+        }
     }
 
     Ok(())

@@ -21,6 +21,13 @@ pub enum Subcommands {
     #[command(about = "List all added directories.")]
     #[command(alias = "ls")]
     List,
+    #[command(about = "Show status of all originSource repo.")]
+    Status {
+        #[arg(help = "A directory.")]
+        #[arg(value_parser = validate_dir)]
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+    },
 }
 
 /// 验证参数 是否是目录

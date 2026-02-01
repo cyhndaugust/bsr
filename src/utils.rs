@@ -1,6 +1,8 @@
 use std::fs::DirEntry;
 use std::path::{Path, PathBuf};
 
+use git2::Repository;
+
 /// 判断项目是否是Bisheng项目
 pub fn is_bisheng_project(path: &Path) -> bool {
     // let condition1 = path.join("srcTemplate");
@@ -37,4 +39,20 @@ pub fn get_tilde_path(path: &Path) -> PathBuf {
         }
     }
     path.to_path_buf()
+}
+
+/// 判断路径是否是git仓库
+pub fn is_git_repo(path: &Path) -> bool {
+    // 非目录，不是git仓库
+    if !path.is_dir() {
+        return false;
+    }
+
+    // 目录下有.git目录，是git仓库
+    if path.join(".git").exists() {
+        return true;
+    }
+
+    // 目录下没有.git目录，尝试打开仓库，若成功则是git仓库
+    Repository::open(path).is_ok()
 }

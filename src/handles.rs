@@ -2,7 +2,7 @@ use crate::args::{Args, Subcommands};
 use crate::storage::{read_project_file, write_project_file};
 use crate::types::{DirectoryNode, ProjectOption};
 use crate::utils::{get_tilde_path, is_bisheng_project, is_hidden_entry, path_to_dir_string};
-use anyhow::Ok;
+use anyhow::{Ok, anyhow};
 use clap::Parser;
 use inquire::Select;
 use std::fs;
@@ -30,6 +30,9 @@ fn handle_subcommands(args: Args) -> anyhow::Result<()> {
                 Subcommands::List => {
                     handle_cmd_list()?;
                 }
+                Subcommands::Status { dir } => {
+                    handle_cmd_status(dir)?;
+                }
             }
 
             Ok(())
@@ -53,6 +56,7 @@ fn handle_cmd_add(dir: PathBuf) -> anyhow::Result<()> {
 }
 
 /// 子命令 List
+/// 列出所有已经关联的Bisheng项目
 fn handle_cmd_list() -> anyhow::Result<()> {
     if let Some(saved_data) = read_project_file()? {
         let mut projects = vec![];
@@ -69,6 +73,18 @@ fn handle_cmd_list() -> anyhow::Result<()> {
             get_tilde_path(&selected.path)
         );
     };
+
+    Ok(())
+}
+
+/// 子命令 Status
+/// 列出所有originSource下的组件的git状态
+fn handle_cmd_status(dir: PathBuf) -> anyhow::Result<()> {
+    let origin_source = dir.join("originSource");
+
+    if !origin_source.exists() {
+        return Err(anyhow!("Not found Bisheng Dependencies"));
+    }
 
     Ok(())
 }

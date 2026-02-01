@@ -1,3 +1,7 @@
+//! 数据存储模块
+//!
+//! 负责将扫描到的项目信息持久化到本地文件系统中。
+
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
@@ -8,6 +12,10 @@ use crate::types::DirectoryNode;
 
 const FILE_NAME: &str = "projects.json";
 
+/// 获取存储文件的绝对路径
+///
+/// 优先尝试在用户的配置目录下创建 `~/.config/bsr/projects.json`。
+/// 如果失败，则回退到当前目录下的 `projects.json`。
 pub fn get_file_path() -> PathBuf {
     if let Some(mut path) = dirs::home_dir() {
         path.push(".config");
@@ -25,7 +33,10 @@ pub fn get_file_path() -> PathBuf {
     PathBuf::from(FILE_NAME)
 }
 
-/// 从文件中读取数据
+/// 从文件中读取存储的项目数据
+///
+/// # Returns
+/// * `Result<Option<DirectoryNode>>` - 读取成功返回目录树根节点，文件不存在或内容为空返回 None
 pub fn read_project_file() -> anyhow::Result<Option<DirectoryNode>> {
     let path = get_file_path();
 
@@ -45,7 +56,12 @@ pub fn read_project_file() -> anyhow::Result<Option<DirectoryNode>> {
     Ok(Some(projects))
 }
 
-/// 存储数据到文件中
+/// 将项目数据写入存储文件
+///
+/// 使用临时文件进行原子写入，以保证数据的一致性。
+///
+/// # Arguments
+/// * `dir_node` - 要存储的目录树根节点
 pub fn write_project_file(dir_node: DirectoryNode) -> anyhow::Result<()> {
     let path = get_file_path();
     let dn_json = serde_json::to_string_pretty(&dir_node)?;

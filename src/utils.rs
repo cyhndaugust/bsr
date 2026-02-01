@@ -1,18 +1,32 @@
+//! 通用工具函数模块
+//!
+//! 包含路径处理、Git 状态获取以及文件系统检查等辅助函数。
+
 use std::fs::DirEntry;
 use std::path::{Path, PathBuf};
 
 use git2::{Repository, StatusOptions};
 
-/// Git 状态信息
+/// Git 状态信息结构体
 #[derive(Debug)]
 pub struct GitStatusInfo {
+    /// 当前分支名、Tag 或 Commit ID
     pub branch: String,
+    /// 工作区是否干净
     pub is_clean: bool,
+    /// 已修改的文件列表
     pub modified_files: Vec<String>,
+    /// Stash 的数量
     pub stash_count: usize,
 }
 
-/// 获取 git 仓库的状态信息
+/// 获取指定路径下 Git 仓库的状态信息
+///
+/// # Arguments
+/// * `path` - Git 仓库根目录路径
+///
+/// # Returns
+/// * `Result<GitStatusInfo>` - 成功返回状态信息，否则返回错误
 pub fn get_git_status(path: &Path) -> anyhow::Result<GitStatusInfo> {
     let mut repo = Repository::open(path)?;
 
@@ -87,17 +101,15 @@ pub fn get_git_status(path: &Path) -> anyhow::Result<GitStatusInfo> {
     })
 }
 
-/// 判断项目是否是Bisheng项目
+/// 判断指定路径是否为毕昇项目
+///
+/// 目前通过检查是否存在 `package.json` 来简单判断。
 pub fn is_bisheng_project(path: &Path) -> bool {
-    // let condition1 = path.join("srcTemplate");
     let condition2 = path.join("package.json");
-
-    // 满足条件证明是Bisheng项目
-    /* condition1.exists() &&  */
     condition2.exists()
 }
 
-/// 是否是隐藏文件或目录
+/// 检查文件系统条目是否为隐藏文件或目录（以 `.` 开头）
 pub fn is_hidden_entry(entry: &DirEntry) -> bool {
     entry
         .file_name()
@@ -106,14 +118,20 @@ pub fn is_hidden_entry(entry: &DirEntry) -> bool {
         .unwrap_or(false)
 }
 
-/// 从路径获取当前目录名
+/// 将路径转换为目录名称字符串
 pub fn path_to_dir_string(path: &Path) -> String {
     path.file_name()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_default()
 }
 
-/// 从路径获取当前目录名，若路径以HOME目录开头，则替换为 ~
+/// 将路径中的 Home 目录部分替换为 `~`
+///
+/// # Arguments
+/// * `path` - 原始路径
+///
+/// # Returns
+/// * `PathBuf` - 转换后的路径
 pub fn get_tilde_path(path: &Path) -> PathBuf {
     if let Some(home) = dirs::home_dir() {
         if let Ok(stripped) = path.strip_prefix(&home) {
@@ -125,7 +143,7 @@ pub fn get_tilde_path(path: &Path) -> PathBuf {
     path.to_path_buf()
 }
 
-/// 判断路径是否是git仓库
+/// 判断指定路径是否为 Git 仓库
 pub fn is_git_repo(path: &Path) -> bool {
     // 非目录，不是git仓库
     if !path.is_dir() {

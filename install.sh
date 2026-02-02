@@ -32,27 +32,56 @@ fi
 
 echo "Latest version: $LATEST_TAG"
 
-ASSET_NAME="${BIN_NAME}-${TARGET}.tar.gz"
+ASSET_NAME="${BIN_NAME}-${TARGET}"
 DOWNLOAD_URL="https://github.com/$REPO/releases/download/$LATEST_TAG/$ASSET_NAME"
 
 echo "Downloading $DOWNLOAD_URL..."
-curl -L -o "$ASSET_NAME" "$DOWNLOAD_URL"
-
-echo "Extracting..."
-tar -xzf "$ASSET_NAME"
-rm "$ASSET_NAME"
+curl -L -o "$BIN_NAME" "$DOWNLOAD_URL"
 
 chmod +x "$BIN_NAME"
 
-INSTALL_DIR="/usr/local/bin"
+INSTALL_DIR="$HOME/.local/bin"
 
 if [ ! -d "$INSTALL_DIR" ]; then
     echo "Directory $INSTALL_DIR does not exist. Creating..."
-    sudo mkdir -p "$INSTALL_DIR"
+    mkdir -p "$INSTALL_DIR"
 fi
 
-echo "Installing to $INSTALL_DIR (requires sudo)..."
-sudo mv "$BIN_NAME" "$INSTALL_DIR/$BIN_NAME"
+echo "Installing to $INSTALL_DIR..."
+mv "$BIN_NAME" "$INSTALL_DIR/$BIN_NAME"
+
+# Check if INSTALL_DIR is in PATH
+if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
+    SHELL_CONFIG=""
+    case "$SHELL" in
+      */zsh)
+        SHELL_CONFIG="$HOME/.zshrc"
+        ;;
+      */bash)
+        if [ -f "$HOME/.bashrc" ]; then
+          SHELL_CONFIG="$HOME/.bashrc"
+        elif [ -f "$HOME/.bash_profile" ]; then
+          SHELL_CONFIG="$HOME/.bash_profile"
+        fi
+        ;;
+    esac
+
+    if [ -n "$SHELL_CONFIG" ]; then
+        if grep -q "$INSTALL_DIR" "$SHELL_CONFIG"; then
+            echo "It seems $INSTALL_DIR is already configured in $SHELL_CONFIG."
+        else
+            echo "Adding $INSTALL_DIR to PATH in $SHELL_CONFIG..."
+            echo "" >> "$SHELL_CONFIG"
+            echo "# bsr" >> "$SHELL_CONFIG"
+            echo "export PATH=\"$INSTALL_DIR:\$PATH\"" >> "$SHELL_CONFIG"
+            echo "Configuration added. Please run 'source $SHELL_CONFIG' or restart your terminal."
+        fi
+    else
+        echo "Warning: $INSTALL_DIR is not in your PATH."
+        echo "Please add the following line to your shell configuration file (e.g., ~/.zshrc or ~/.bash_profile):"
+        echo "export PATH=\"$INSTALL_DIR:\$PATH\""
+    fi
+fi
 
 echo "Success! $BIN_NAME installed to $INSTALL_DIR/$BIN_NAME"
 echo "Run '$BIN_NAME --version' to verify."

@@ -34,15 +34,12 @@ jobs:
       - name: Build binary
         run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Compress binary
-        run: |
-          cd target/${{ matrix.target }}/release
-          tar -czf ../../../${{ matrix.asset_name }}.tar.gz bsr
-          cd -
+      - name: Rename binary
+        run: mv target/${{ matrix.target }}/release/bsr ${{ matrix.asset_name }}
 
       - name: Create Release and Upload Asset
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: ${{ matrix.asset_name }}.tar.gz
+          files: ${{ matrix.asset_name }}
           token: ${{ secrets.GITHUB_TOKEN }}

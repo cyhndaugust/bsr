@@ -18,3 +18,10 @@ ignore = "0.4.25"
 chrono = "0.4.43"
 regex = "1.12.2"
 self_update = "0.42.0"
+
+[profile.release]
+strip = true      # Automatically strip symbols from the binary
+opt-level = "z"   # Optimize for size
+lto = true        # Enable Link Time Optimization
+codegen-units = 1 # Reduce parallel code generation units to increase optimization
+panic = "abort"   # Abort on panic (removes landing pads and unwinding tables)

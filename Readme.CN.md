@@ -1,6 +1,24 @@
 # bsr 项目管理工具
 
-`bsr` 是一个用于高效管理 Bisheng 项目及其子仓库状态的 Rust 命令行工具。
+`bsr 是一个用于高效管理 Bisheng 项目及其子仓库状态的 Rust 命令行工具。
+
+## 安装
+
+### macOS (一键安装)
+
+你可以使用安装脚本轻松安装 `bsr`：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/cyhndaugust/bsr/main/install.sh | bash
+```
+
+### 升级
+
+安装完成后，你可以随时使用以下命令将 `bsr` 升级到最新版本：
+
+```bash
+bsr upgrade
+```
 
 ## 已实现命令
 

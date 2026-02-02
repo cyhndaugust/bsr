@@ -1,6 +1,24 @@
 # bsr Project Management Tool
 
-`bsr` is a Rust command-line tool designed for efficiently managing Bisheng projects and their sub-repository statuses.
+`bsr is a Rust command-line tool designed for efficiently managing Bisheng projects and their sub-repository statuses.
+
+## Installation
+
+### macOS (One-click Install)
+
+You can install `bsr` easily using the installation script:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/cyhndaugust/bsr/main/install.sh | bash
+```
+
+### Upgrade
+
+Once installed, you can upgrade `bsr` to the latest version at any time using:
+
+```bash
+bsr upgrade
+```
 
 ## Implemented Commands
 

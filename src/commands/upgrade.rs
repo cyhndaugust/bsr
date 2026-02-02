@@ -1,7 +1,10 @@
 use anyhow::Result;
+use colored::*;
 use self_update::cargo_crate_version;
 
 pub fn handle() -> Result<()> {
+    println!("{}", "Checking for updates...".cyan());
+
     let status = self_update::backends::github::Update::configure()
         .repo_owner("cyhndaugust")
         .repo_name("bsr")
@@ -12,6 +15,22 @@ pub fn handle() -> Result<()> {
         .build()?
         .update()?;
 
-    println!("Update status: `{}`!", status.version());
+    if status.updated() {
+        println!(
+            "\n{} {} {} {}",
+            "Successfully updated to version".green(),
+            status.version().bold().white(),
+            "from".green(),
+            cargo_crate_version!().bold().white()
+        );
+        println!("{}", "✨ Enjoy the new features!".yellow());
+    } else {
+        println!(
+            "\n{} {}",
+            "You are already using the latest version:".green(),
+            status.version().bold().white()
+        );
+    }
+
     Ok(())
 }

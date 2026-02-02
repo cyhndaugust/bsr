@@ -67,6 +67,9 @@ pub enum Subcommands {
         )]
         context: usize,
     },
+    /// 升级 bsr 到最新版本
+    #[command(about = "Upgrade bsr to the latest version.")]
+    Upgrade,
 }
 
 /// 验证给定的路径字符串是否为存在的目录

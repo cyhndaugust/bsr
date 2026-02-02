@@ -14,7 +14,7 @@ const FILE_NAME: &str = "projects.json";
 const COMPARE_FILE_NAME: &str = "compare_pending";
 
 /// 获取配置目录
-fn get_config_dir() -> PathBuf {
+pub fn get_config_dir() -> PathBuf {
     if let Some(mut path) = dirs::home_dir() {
         path.push(".config");
         path.push("bsr");
@@ -34,6 +34,16 @@ fn get_config_dir() -> PathBuf {
         return path;
     }
     PathBuf::from(".")
+}
+
+/// 获取报告存放目录
+pub fn get_reports_dir() -> PathBuf {
+    let mut path = get_config_dir();
+    path.push("reports");
+    if !path.exists() {
+        let _ = fs::create_dir_all(&path);
+    }
+    path
 }
 
 /// 获取存储文件的绝对路径

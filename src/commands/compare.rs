@@ -2,9 +2,12 @@
 //!
 //! 处理 `bsr compare` 命令，负责目录对比逻辑。
 
+use chrono::Local;
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use anyhow::{Context, Result};
 use colored::Colorize;
@@ -96,9 +99,58 @@ fn perform_comparison(dir_a: &Path, dir_b: &Path, context: usize) -> Result<()> 
     }
 
     // 3. 详细对比
-    compare_directories(dir_a, dir_b, files_a, files_b, context)?;
+    let diff_result = compare_directories(dir_a, dir_b, files_a, files_b, context)?;
+
+    // 4. 保存对比结果并提示打开
+    save_and_open_diff(dir_a, dir_b, &diff_result)?;
 
     Ok(())
+}
+
+fn save_and_open_diff(dir_a: &Path, dir_b: &Path, diff_content: &str) -> Result<()> {
+    let now = Local::now();
+    let timestamp = now.format("%Y%m%d_%H%M%S").to_string();
+    let filename = format!("diff_{}.txt", timestamp);
+    let reports_dir = storage::get_reports_dir();
+    let file_path = reports_dir.join(&filename);
+
+    let header = format!(
+        "Comparison Report\n\
+         Generated at: {}\n\
+         Directory A: {}\n\
+         Directory B: {}\n\
+         --------------------------------------------------------------------------------\n\n",
+        now.format("%Y-%m-%d %H:%M:%S"),
+        dir_a.display(),
+        dir_b.display()
+    );
+
+    let full_content = format!("{}{}", header, strip_ansi_codes(diff_content));
+
+    let mut file = fs::File::create(&file_path)?;
+    file.write_all(full_content.as_bytes())?;
+
+    println!(
+        "\nDiff result saved to: {}",
+        file_path.display().to_string().green()
+    );
+
+    let open_option = Select::new(
+        "Do you want to open the diff file in VS Code?",
+        vec!["Open", "Cancel"],
+    )
+    .prompt()?;
+
+    if open_option == "Open" {
+        Command::new("code").arg(&file_path).spawn()?;
+    }
+
+    Ok(())
+}
+
+fn strip_ansi_codes(input: &str) -> String {
+    let regex = regex::Regex::new(r"\x1b\[[0-9;]*m").unwrap();
+    regex.replace_all(input, "").to_string()
 }
 
 /// 检查目录结构相似度
@@ -171,7 +223,7 @@ fn compare_directories(
     files_a: Vec<PathBuf>,
     files_b: Vec<PathBuf>,
     context: usize,
-) -> Result<()> {
+) -> Result<String> {
     let mut all_files: HashSet<PathBuf> = HashSet::new();
     for f in &files_a {
         all_files.insert(f.clone());
@@ -254,23 +306,34 @@ fn compare_directories(
         }
     }
 
+    let mut full_output = String::new();
+
     // 输出结果
     if results.is_empty() {
-        println!("{}", "No differences found.".green());
+        let msg = "No differences found.";
+        println!("{}", msg.green());
+        full_output.push_str(msg);
     } else {
         let mut sorted_dirs: Vec<_> = results.keys().collect();
         sorted_dirs.sort();
 
         for dir in sorted_dirs {
-            println!("{}", format!("Directory: {}", dir.display()).blue().bold());
+            let dir_header = format!("Directory: {}", dir.display());
+            println!("{}", dir_header.blue().bold());
+            full_output.push_str(&dir_header);
+            full_output.push('\n');
+
             for line in &results[dir] {
                 println!("{}", line);
+                full_output.push_str(line);
+                full_output.push('\n');
             }
             println!();
+            full_output.push('\n');
         }
     }
 
-    Ok(())
+    Ok(full_output)
 }
 
 fn is_origin_source(path: &Path) -> bool {

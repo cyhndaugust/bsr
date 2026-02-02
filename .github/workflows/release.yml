@@ -15,10 +15,10 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-13
+          - os: macos-latest
             target: x86_64-apple-darwin
             asset_name: bsr-x86_64-apple-darwin
-          - os: macos-14
+          - os: macos-latest
             target: aarch64-apple-darwin
             asset_name: bsr-aarch64-apple-darwin
 

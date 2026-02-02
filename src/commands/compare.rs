@@ -18,15 +18,106 @@ use similar::{ChangeTag, TextDiff};
 use crate::storage;
 
 /// 处理 compare 命令
-pub fn handle(target_dir: PathBuf, context: usize) -> Result<()> {
-    let abs_target_dir = fs::canonicalize(&target_dir)
-        .with_context(|| format!("Failed to canonicalize path: {:?}", target_dir))?;
+pub fn handle(
+    target_dir: Option<PathBuf>,
+    context: usize,
+    origin_source_subpath: Option<PathBuf>,
+) -> Result<()> {
+    let mut pending_dirs = storage::read_pending_compare()?;
 
-    let pending_dir_opt = storage::read_pending_compare()?;
+    // 如果指定了 -os 参数，则必须已有两个待比对目录
+    if let Some(subpath) = origin_source_subpath {
+        if pending_dirs.len() != 2 {
+            println!(
+                "{}",
+                "Error: Comparison with --originSource requires exactly two directories in the waiting area."
+                    .red()
+            );
+            println!(
+                "Current waiting area has {} directories.",
+                pending_dirs.len()
+            );
+            return Ok(());
+        }
 
-    if let Some(pending_dir) = pending_dir_opt {
-        // 待比区已有目录
-        if pending_dir == abs_target_dir {
+        let dir_a = &pending_dirs[0];
+        let dir_b = &pending_dirs[1];
+        let path_a = dir_a.join("originSource").join(&subpath);
+        let path_b = dir_b.join("originSource").join(&subpath);
+
+        println!(
+            "{}",
+            format!(
+                "\nComparing originSource subdirectory: {}\n",
+                subpath.display()
+            )
+            .green()
+            .bold()
+        );
+        println!("Dir A: {}", path_a.display().to_string().cyan());
+        println!("Dir B: {}", path_b.display().to_string().cyan());
+
+        if !path_a.exists() {
+            println!("{}", format!("Path not found in Dir A: {:?}", path_a).red());
+        }
+        if !path_b.exists() {
+            println!("{}", format!("Path not found in Dir B: {:?}", path_b).red());
+        }
+
+        if path_a.exists() && path_b.exists() {
+            // 对子目录进行全量对比（递归）
+            perform_comparison(&path_a, &path_b, context, true)?;
+        }
+
+        return Ok(());
+    }
+
+    // 如果未指定 target_dir，则尝试直接对比待比对区的两个目录
+    if target_dir.is_none() {
+        if pending_dirs.len() == 2 {
+            println!(
+                "{}",
+                "\nNo directory specified. Comparing waiting area directories...\n"
+                    .green()
+                    .bold()
+            );
+            println!("Dir A: {}", pending_dirs[0].display().to_string().cyan());
+            println!("Dir B: {}", pending_dirs[1].display().to_string().cyan());
+
+            perform_main_comparison(&pending_dirs[0], &pending_dirs[1], context)?;
+            return Ok(());
+        } else {
+            // 如果待比对区不足2个，提示错误
+            println!(
+                "{}",
+                "Error: No directory specified and waiting area does not have 2 directories.".red()
+            );
+            println!(
+                "Current waiting area has {} directory(s).",
+                pending_dirs.len()
+            );
+            println!("Usage: bsr compare <dir> or add 2 directories to waiting area.");
+            return Ok(());
+        }
+    }
+
+    let target_path = target_dir.unwrap(); // 安全，因为上面已经处理了 None 的情况
+    let abs_target_dir = fs::canonicalize(&target_path)
+        .with_context(|| format!("Failed to canonicalize path: {:?}", target_path))?;
+
+    // 处理待比对区逻辑
+    if pending_dirs.is_empty() {
+        // 0 -> 1
+        pending_dirs.push(abs_target_dir.clone());
+        storage::write_pending_compare(&pending_dirs)?;
+        println!(
+            "Added {} to the waiting area (1/2).",
+            abs_target_dir.display().to_string().green()
+        );
+    } else if pending_dirs.len() == 1 {
+        // 1 -> 2
+        let first_dir = &pending_dirs[0];
+        if first_dir == &abs_target_dir {
             println!(
                 "{}",
                 "The directory is already in the waiting area.".yellow()
@@ -34,58 +125,93 @@ pub fn handle(target_dir: PathBuf, context: usize) -> Result<()> {
             return Ok(());
         }
 
+        pending_dirs.push(abs_target_dir.clone());
+        storage::write_pending_compare(&pending_dirs)?;
         println!(
-            "Waiting area directory: {}",
-            pending_dir.display().to_string().cyan()
-        );
-        println!(
-            "Current directory:      {}",
-            abs_target_dir.display().to_string().cyan()
+            "Added {} to the waiting area (2/2).",
+            abs_target_dir.display().to_string().green()
         );
 
-        let options = vec![
-            "Start comparison",
-            "Replace waiting area with current directory",
-            "Cancel",
-        ];
-
+        // 自动提示开始对比
         let ans = Select::new(
-            "A directory is already in the waiting area. What do you want to do?",
-            options,
+            "Two directories are ready. What do you want to do?",
+            vec!["Start comparison", "Cancel"],
         )
         .prompt()?;
 
-        match ans {
-            "Start comparison" => {
-                // 开始对比
-                println!("{}", "\nStarting comparison...\n".green().bold());
-                perform_comparison(&pending_dir, &abs_target_dir, context)?;
-            }
-            "Replace waiting area with current directory" => {
-                storage::write_pending_compare(&abs_target_dir)?;
-                println!("{}", "Updated waiting area with current directory.".green());
-            }
-            _ => {
-                println!("Cancelled.");
-            }
+        if ans == "Start comparison" {
+            println!("{}", "\nStarting comparison...\n".green().bold());
+            perform_main_comparison(&pending_dirs[0], &pending_dirs[1], context)?;
         }
     } else {
-        // 待比区为空，直接添加
-        storage::write_pending_compare(&abs_target_dir)?;
-        println!(
-            "Added {} to the waiting area.",
-            abs_target_dir.display().to_string().green()
-        );
+        // 2 -> Check if target is one of them or Replace
+        if pending_dirs.contains(&abs_target_dir) {
+            println!(
+                "{}",
+                "The directory is already in the waiting area.".yellow()
+            );
+            // 即使已经在待比对区，如果总数是2，也提示是否开始对比
+            let ans = Select::new(
+                "Two directories are ready. What do you want to do?",
+                vec!["Start comparison", "Cancel"],
+            )
+            .prompt()?;
+
+            if ans == "Start comparison" {
+                println!("{}", "\nStarting comparison...\n".green().bold());
+                perform_main_comparison(&pending_dirs[0], &pending_dirs[1], context)?;
+            }
+            return Ok(());
+        } else {
+            println!("Waiting area is full:");
+            println!("1: {}", pending_dirs[0].display().to_string().cyan());
+            println!("2: {}", pending_dirs[1].display().to_string().cyan());
+            println!("Current: {}", abs_target_dir.display().to_string().green());
+
+            let options = vec![
+                "Replace 1st directory",
+                "Replace 2nd directory",
+                "Clear and add as 1st",
+                "Start comparison (ignore current)",
+                "Cancel",
+            ];
+
+            let ans = Select::new("What do you want to do?", options).prompt()?;
+
+            match ans {
+                "Replace 1st directory" => {
+                    pending_dirs[0] = abs_target_dir;
+                    storage::write_pending_compare(&pending_dirs)?;
+                    println!("{}", "Updated waiting area.".green());
+                }
+                "Replace 2nd directory" => {
+                    pending_dirs[1] = abs_target_dir;
+                    storage::write_pending_compare(&pending_dirs)?;
+                    println!("{}", "Updated waiting area.".green());
+                }
+                "Clear and add as 1st" => {
+                    pending_dirs.clear();
+                    pending_dirs.push(abs_target_dir);
+                    storage::write_pending_compare(&pending_dirs)?;
+                    println!("{}", "Cleared and added to waiting area.".green());
+                }
+                "Start comparison (ignore current)" => {
+                    println!("{}", "\nStarting comparison...\n".green().bold());
+                    perform_main_comparison(&pending_dirs[0], &pending_dirs[1], context)?;
+                }
+                _ => println!("Cancelled."),
+            }
+        }
     }
 
     Ok(())
 }
 
-/// 执行对比逻辑
-fn perform_comparison(dir_a: &Path, dir_b: &Path, context: usize) -> Result<()> {
+/// 执行主工程对比（包含 originSource 摘要）
+fn perform_main_comparison(dir_a: &Path, dir_b: &Path, context: usize) -> Result<()> {
     // 1. 获取文件列表
-    let files_a = list_files(dir_a)?;
-    let files_b = list_files(dir_b)?;
+    let files_a = list_files(dir_a, false)?;
+    let files_b = list_files(dir_b, false)?;
 
     // 2. 结构对比
     if !check_structure_similarity(&files_a, &files_b)? {
@@ -99,12 +225,165 @@ fn perform_comparison(dir_a: &Path, dir_b: &Path, context: usize) -> Result<()> 
     }
 
     // 3. 详细对比
-    let diff_result = compare_directories(dir_a, dir_b, files_a, files_b, context)?;
+    let mut diff_result = compare_directories(dir_a, dir_b, files_a, files_b, context, false)?;
+
+    // 4. originSource 版本对比摘要
+    let origin_diff = compare_origin_source_summary(dir_a, dir_b)?;
+    if let Some(content) = origin_diff {
+        diff_result.push_str("\n\n");
+        diff_result.push_str(&content);
+    }
+
+    // 5. 保存对比结果并提示打开
+    save_and_open_diff(dir_a, dir_b, &diff_result)?;
+
+    Ok(())
+}
+
+/// 执行通用对比逻辑
+/// include_origin_source: 是否包含 originSource 目录（递归）
+fn perform_comparison(
+    dir_a: &Path,
+    dir_b: &Path,
+    context: usize,
+    include_origin_source: bool,
+) -> Result<()> {
+    // 1. 获取文件列表
+    let files_a = list_files(dir_a, include_origin_source)?;
+    let files_b = list_files(dir_b, include_origin_source)?;
+
+    // 2. 结构对比
+    if !check_structure_similarity(&files_a, &files_b)? {
+        println!(
+            "{}",
+            "The directory structures are too different. Comparison aborted."
+                .red()
+                .bold()
+        );
+        return Ok(());
+    }
+
+    // 3. 详细对比
+    let diff_result = compare_directories(
+        dir_a,
+        dir_b,
+        files_a,
+        files_b,
+        context,
+        include_origin_source,
+    )?;
 
     // 4. 保存对比结果并提示打开
     save_and_open_diff(dir_a, dir_b, &diff_result)?;
 
     Ok(())
+}
+
+/// 对比 originSource 下的所有仓库版本
+fn compare_origin_source_summary(dir_a: &Path, dir_b: &Path) -> Result<Option<String>> {
+    let os_a = dir_a.join("originSource");
+    let os_b = dir_b.join("originSource");
+
+    if !os_a.exists() && !os_b.exists() {
+        return Ok(None);
+    }
+
+    let mut output = String::new();
+    let title = "\n--- originSource Version Comparison ---";
+    println!("{}", title.blue().bold());
+    output.push_str(title);
+    output.push('\n');
+
+    let repos_a = scan_git_repos(&os_a)?;
+    let repos_b = scan_git_repos(&os_b)?;
+
+    let mut all_repos: HashSet<PathBuf> = HashSet::new();
+    for r in repos_a.keys() {
+        all_repos.insert(r.clone());
+    }
+    for r in repos_b.keys() {
+        all_repos.insert(r.clone());
+    }
+
+    let mut sorted_repos: Vec<_> = all_repos.into_iter().collect();
+    sorted_repos.sort();
+
+    let mut has_diff = false;
+
+    for rel_path in sorted_repos {
+        let ver_a = repos_a.get(&rel_path);
+        let ver_b = repos_b.get(&rel_path);
+
+        match (ver_a, ver_b) {
+            (Some(va), Some(vb)) => {
+                let s_a = format_git_version(va);
+                let s_b = format_git_version(vb);
+                if s_a != s_b {
+                    has_diff = true;
+                    println!("{}: {} vs {}", rel_path.display(), s_a.red(), s_b.green());
+                    output.push_str(&format!("{}: {} vs {}\n", rel_path.display(), s_a, s_b));
+                }
+            }
+            (Some(_), None) => {
+                has_diff = true;
+                println!("{}: {} (only in A)", rel_path.display(), "Missing".red());
+                output.push_str(&format!("{}: Missing (only in A)\n", rel_path.display()));
+            }
+            (None, Some(_)) => {
+                has_diff = true;
+                println!("{}: {} (only in B)", rel_path.display(), "Missing".green());
+                output.push_str(&format!("{}: Missing (only in B)\n", rel_path.display()));
+            }
+            _ => {}
+        }
+    }
+
+    if !has_diff {
+        let msg = "All originSource repositories match.";
+        println!("{}", msg.green());
+        output.push_str(msg);
+        output.push('\n');
+    }
+
+    Ok(Some(output))
+}
+
+fn scan_git_repos(root: &Path) -> Result<HashMap<PathBuf, GitVersion>> {
+    let mut repos = HashMap::new();
+    if !root.exists() {
+        return Ok(repos);
+    }
+
+    let walker = WalkBuilder::new(root)
+        .hidden(true)
+        .git_ignore(false) // 我们需要找到 .git，所以不能忽略 gitignore? 不，我们需要遍历所有目录找 .git
+        .build();
+
+    for result in walker {
+        if let Ok(entry) = result {
+            if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
+                let path = entry.path();
+                if path.join(".git").exists() {
+                    if let Ok(ver) = get_git_version(path) {
+                        if let Ok(rel) = path.strip_prefix(root) {
+                            repos.insert(rel.to_path_buf(), ver);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(repos)
+}
+
+fn format_git_version(v: &GitVersion) -> String {
+    match v {
+        GitVersion::Tag(t, clean) => format!("Tag: {}{}", t, if *clean { "" } else { "*" }),
+        GitVersion::Branch(b, clean) => format!("Branch: {}{}", b, if *clean { "" } else { "*" }),
+        GitVersion::Commit(c, clean) => {
+            format!("Commit: {:.7}{}", c, if *clean { "" } else { "*" })
+        }
+    }
 }
 
 fn save_and_open_diff(dir_a: &Path, dir_b: &Path, diff_content: &str) -> Result<()> {
@@ -139,6 +418,7 @@ fn save_and_open_diff(dir_a: &Path, dir_b: &Path, diff_content: &str) -> Result<
         "Do you want to open the diff file in VS Code?",
         vec!["Open", "Cancel"],
     )
+    .with_starting_cursor(1) // 默认选中 Cancel
     .prompt()?;
 
     if open_option == "Open" {
@@ -171,8 +451,8 @@ fn check_structure_similarity(files_a: &[PathBuf], files_b: &[PathBuf]) -> Resul
     Ok(similarity >= 0.3)
 }
 
-/// 列出目录下所有文件（相对路径），遵循 gitignore，但强制包含 originSource
-fn list_files(root: &Path) -> Result<Vec<PathBuf>> {
+/// 列出目录下所有文件（相对路径），遵循 gitignore，可选择是否强制包含 originSource
+fn list_files(root: &Path, include_origin_source: bool) -> Result<Vec<PathBuf>> {
     let mut files = HashSet::new();
 
     // 1. 主遍历：遵循所有 gitignore 规则
@@ -200,28 +480,31 @@ fn list_files(root: &Path) -> Result<Vec<PathBuf>> {
     }
 
     // 2. originSource 专项遍历：忽略父目录的 gitignore，但遵循内部的 gitignore
-    let origin_source_path = root.join("originSource");
-    if origin_source_path.exists() {
-        let mut os_builder = WalkBuilder::new(&origin_source_path);
-        os_builder.hidden(true);
-        os_builder.git_ignore(true);
-        os_builder.parents(false); // 关键：不读取上层目录的 gitignore
+    // 只有在 include_origin_source 为 true 时才执行
+    if include_origin_source {
+        let origin_source_path = root.join("originSource");
+        if origin_source_path.exists() {
+            let mut os_builder = WalkBuilder::new(&origin_source_path);
+            os_builder.hidden(true);
+            os_builder.git_ignore(true);
+            os_builder.parents(false); // 关键：不读取上层目录的 gitignore
 
-        let os_walker = os_builder
-            .filter_entry(|e| {
-                if e.file_name() == ".git" {
-                    return false;
-                }
-                true
-            })
-            .build();
+            let os_walker = os_builder
+                .filter_entry(|e| {
+                    if e.file_name() == ".git" {
+                        return false;
+                    }
+                    true
+                })
+                .build();
 
-        for result in os_walker {
-            if let Ok(entry) = result {
-                if entry.file_type().map(|ft| ft.is_file()).unwrap_or(false) {
-                    // 注意：这里的 path 需要转换为相对于 root 的路径
-                    if let Ok(rel_path) = entry.path().strip_prefix(root) {
-                        files.insert(rel_path.to_path_buf());
+            for result in os_walker {
+                if let Ok(entry) = result {
+                    if entry.file_type().map(|ft| ft.is_file()).unwrap_or(false) {
+                        // 注意：这里的 path 需要转换为相对于 root 的路径
+                        if let Ok(rel_path) = entry.path().strip_prefix(root) {
+                            files.insert(rel_path.to_path_buf());
+                        }
                     }
                 }
             }
@@ -262,7 +545,7 @@ mod tests {
         File::create(&normal_file)?;
 
         // 4. Run list_files
-        let files = list_files(root)?;
+        let files = list_files(root, true)?;
 
         // 5. Assertions
         let files_set: HashSet<_> = files.iter().collect();
@@ -294,6 +577,7 @@ fn compare_directories(
     files_a: Vec<PathBuf>,
     files_b: Vec<PathBuf>,
     context: usize,
+    include_origin_source: bool,
 ) -> Result<String> {
     let mut all_files: HashSet<PathBuf> = HashSet::new();
     for f in &files_a {
@@ -336,6 +620,11 @@ fn compare_directories(
             ));
         } else {
             // Both exist, compare content
+            if !include_origin_source && is_origin_source(&rel_path) {
+                // 如果不包含 originSource，则跳过（理论上 list_files 已经过滤了，但双重保险）
+                continue;
+            }
+
             if is_origin_source(&rel_path) {
                 // originSource 特殊对比
                 if let Some(diff) =
@@ -557,16 +846,21 @@ fn generate_diff(text1: &str, text2: &str, filename: &str, context: usize) -> St
                     ChangeTag::Equal => change.old_index(),
                 };
                 let line_number = s.map(|i| (i + 1).to_string()).unwrap_or_default();
-                output.push_str(&format!("{:>4} | ", line_number.dimmed()));
+                let prefix = match change.tag() {
+                    ChangeTag::Delete => "-".red(),
+                    ChangeTag::Insert => "+".green(),
+                    ChangeTag::Equal => " ".dimmed(),
+                };
+                output.push_str(&format!("{:>4} | {} ", line_number.dimmed(), prefix));
 
                 for (emphasized, value) in change.values() {
                     if *emphasized {
                         match change.tag() {
                             ChangeTag::Delete => {
-                                output.push_str(&format!("{}", value.white().on_red()))
+                                output.push_str(&format!("{}", value.red().bold()))
                             }
                             ChangeTag::Insert => {
-                                output.push_str(&format!("{}", value.white().on_green()))
+                                output.push_str(&format!("{}", value.green().bold()))
                             }
                             ChangeTag::Equal => output.push_str(&format!("{}", value.dimmed())),
                         }

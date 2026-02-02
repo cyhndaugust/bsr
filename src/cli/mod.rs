@@ -52,11 +52,10 @@ pub enum Subcommands {
     /// 对比两个目录的差异
     #[command(about = "Compare two directories.")]
     Compare {
-        /// 要对比的目录路径（默认为当前目录）
+        /// 要对比的目录路径（可选，默认为空）
         #[arg(help = "A directory to compare.")]
         #[arg(value_parser = validate_dir)]
-        #[arg(default_value = ".")]
-        dir: PathBuf,
+        dir: Option<PathBuf>,
 
         /// 显示上下文行数
         #[arg(
@@ -66,6 +65,14 @@ pub enum Subcommands {
             default_value_t = 3
         )]
         context: usize,
+
+        /// 指定对比 originSource 下的特定子目录
+        #[arg(
+            long = "originSource",
+            visible_alias = "os",
+            help = "Compare a specific subdirectory relative to originSource."
+        )]
+        origin_source: Option<PathBuf>,
     },
     /// 升级 bsr 到最新版本
     #[command(about = "Upgrade bsr to the latest version.")]

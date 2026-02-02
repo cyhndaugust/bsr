@@ -101,25 +101,34 @@ pub fn write_project_file(dir_node: DirectoryNode) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// 读取待比对的目录路径
-pub fn read_pending_compare() -> anyhow::Result<Option<PathBuf>> {
+/// 读取待比对的目录路径列表
+pub fn read_pending_compare() -> anyhow::Result<Vec<PathBuf>> {
     let path = get_compare_file_path();
     if !path.exists() {
-        return Ok(None);
+        return Ok(Vec::new());
     }
     let content = fs::read_to_string(&path)?;
     if content.trim().is_empty() {
-        return Ok(None);
+        return Ok(Vec::new());
     }
-    Ok(Some(PathBuf::from(content.trim())))
+    // 尝试解析为 JSON 数组，如果失败（旧格式），则回退到读取单个路径并包装为 Vec
+    if let Ok(dirs) = serde_json::from_str::<Vec<PathBuf>>(&content) {
+        Ok(dirs)
+    } else {
+        Ok(vec![PathBuf::from(content.trim())])
+    }
 }
 
-/// 写入待比对的目录路径
-pub fn write_pending_compare(dir: &PathBuf) -> anyhow::Result<()> {
+/// 写入待比对的目录路径列表
+pub fn write_pending_compare(dirs: &[PathBuf]) -> anyhow::Result<()> {
     let path = get_compare_file_path();
-    // 使用绝对路径存储
-    let abs_path = fs::canonicalize(dir).unwrap_or(dir.clone());
-    fs::write(&path, abs_path.to_string_lossy().as_bytes())?;
+    // 确保存储的是绝对路径
+    let abs_dirs: Vec<PathBuf> = dirs
+        .iter()
+        .map(|d| fs::canonicalize(d).unwrap_or_else(|_| d.clone()))
+        .collect();
+    let json = serde_json::to_string(&abs_dirs)?;
+    fs::write(&path, json)?;
     Ok(())
 }
 

@@ -217,25 +217,25 @@ fn perform_main_comparison(dir_a: &Path, dir_b: &Path, context: usize) -> Result
     if !check_structure_similarity(&files_a, &files_b)? {
         println!(
             "{}",
-            "The directory structures are too different. Comparison aborted."
-                .red()
+            "The directory structures are quite different."
+                .yellow()
                 .bold()
         );
-        return Ok(());
+        let ans = Select::new("Do you want to continue comparison?", vec!["Yes", "No"]).prompt()?;
+        if ans == "No" {
+            println!("Comparison aborted.");
+            return Ok(());
+        }
     }
 
     // 3. 详细对比
-    let mut diff_result = compare_directories(dir_a, dir_b, files_a, files_b, context, false)?;
+    let diff_result = compare_directories(dir_a, dir_b, files_a, files_b, context, false)?;
 
     // 4. originSource 版本对比摘要
     let origin_diff = compare_origin_source_summary(dir_a, dir_b)?;
-    if let Some(content) = origin_diff {
-        diff_result.push_str("\n\n");
-        diff_result.push_str(&content);
-    }
 
     // 5. 保存对比结果并提示打开
-    save_and_open_diff(dir_a, dir_b, &diff_result)?;
+    save_and_open_diff(dir_a, dir_b, &diff_result, origin_diff.as_deref())?;
 
     Ok(())
 }
@@ -256,11 +256,15 @@ fn perform_comparison(
     if !check_structure_similarity(&files_a, &files_b)? {
         println!(
             "{}",
-            "The directory structures are too different. Comparison aborted."
-                .red()
+            "The directory structures are quite different."
+                .yellow()
                 .bold()
         );
-        return Ok(());
+        let ans = Select::new("Do you want to continue comparison?", vec!["Yes", "No"]).prompt()?;
+        if ans == "No" {
+            println!("Comparison aborted.");
+            return Ok(());
+        }
     }
 
     // 3. 详细对比
@@ -274,7 +278,7 @@ fn perform_comparison(
     )?;
 
     // 4. 保存对比结果并提示打开
-    save_and_open_diff(dir_a, dir_b, &diff_result)?;
+    save_and_open_diff(dir_a, dir_b, &diff_result, None)?;
 
     Ok(())
 }
@@ -359,18 +363,16 @@ fn scan_git_repos(root: &Path) -> Result<HashMap<PathBuf, GitVersion>> {
         .git_ignore(false) // 我们需要找到 .git，所以不能忽略 gitignore? 不，我们需要遍历所有目录找 .git
         .build();
 
-    for result in walker {
-        if let Ok(entry) = result {
-            if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
-                let path = entry.path();
-                if path.join(".git").exists() {
-                    if let Ok(ver) = get_git_version(path) {
-                        if let Ok(rel) = path.strip_prefix(root) {
-                            repos.insert(rel.to_path_buf(), ver);
-                        }
-                    }
-                }
-            }
+    for result in walker.flatten() {
+        if !result.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        let path = result.path();
+        if !path.join(".git").exists() {
+            continue;
+        }
+        if let (Ok(ver), Ok(rel)) = (get_git_version(path), path.strip_prefix(root)) {
+            repos.insert(rel.to_path_buf(), ver);
         }
     }
     Ok(repos)
@@ -386,25 +388,47 @@ fn format_git_version(v: &GitVersion) -> String {
     }
 }
 
-fn save_and_open_diff(dir_a: &Path, dir_b: &Path, diff_content: &str) -> Result<()> {
+fn save_and_open_diff(
+    dir_a: &Path,
+    dir_b: &Path,
+    diff_content: &str,
+    origin_diff: Option<&str>,
+) -> Result<()> {
     let now = Local::now();
     let timestamp = now.format("%Y%m%d_%H%M%S").to_string();
-    let filename = format!("diff_{}.txt", timestamp);
+    let filename = format!("diff_{}.md", timestamp);
     let reports_dir = storage::get_reports_dir();
     let file_path = reports_dir.join(&filename);
 
-    let header = format!(
-        "Comparison Report\n\
-         Generated at: {}\n\
-         Directory A: {}\n\
-         Directory B: {}\n\
-         --------------------------------------------------------------------------------\n\n",
-        now.format("%Y-%m-%d %H:%M:%S"),
-        dir_a.display(),
-        dir_b.display()
-    );
+    let mut full_content = String::new();
 
-    let full_content = format!("{}{}", header, strip_ansi_codes(diff_content));
+    // 1. Header
+    full_content.push_str("# Comparison Report\n\n");
+    full_content.push_str(&format!(
+        "- **Generated at**: {}\n",
+        now.format("%Y-%m-%d %H:%M:%S")
+    ));
+    full_content.push_str(&format!("- **Directory A**: `{}`\n", dir_a.display()));
+    full_content.push_str(&format!("- **Directory B**: `{}`\n", dir_b.display()));
+    full_content.push_str("\n---\n\n");
+
+    // 2. Main Diff
+    full_content.push_str("## File Differences\n\n");
+    if diff_content.trim().is_empty() {
+        full_content.push_str("*No file differences found.*\n\n");
+    } else {
+        full_content.push_str("```diff\n");
+        full_content.push_str(&strip_ansi_codes(diff_content));
+        full_content.push_str("\n```\n\n");
+    }
+
+    // 3. OriginSource Diff (if any)
+    if let Some(origin) = origin_diff {
+        full_content.push_str("## originSource Version Comparison\n\n");
+        full_content.push_str("```diff\n");
+        full_content.push_str(&strip_ansi_codes(origin));
+        full_content.push_str("\n```\n\n");
+    }
 
     let mut file = fs::File::create(&file_path)?;
     file.write_all(full_content.as_bytes())?;
@@ -469,13 +493,12 @@ fn list_files(root: &Path, include_origin_source: bool) -> Result<Vec<PathBuf>> 
         })
         .build();
 
-    for result in walker {
-        if let Ok(entry) = result {
-            if entry.file_type().map(|ft| ft.is_file()).unwrap_or(false) {
-                if let Ok(rel_path) = entry.path().strip_prefix(root) {
-                    files.insert(rel_path.to_path_buf());
-                }
-            }
+    for result in walker.flatten() {
+        if !result.file_type().map(|ft| ft.is_file()).unwrap_or(false) {
+            continue;
+        }
+        if let Ok(rel_path) = result.path().strip_prefix(root) {
+            files.insert(rel_path.to_path_buf());
         }
     }
 
@@ -498,14 +521,13 @@ fn list_files(root: &Path, include_origin_source: bool) -> Result<Vec<PathBuf>> 
                 })
                 .build();
 
-            for result in os_walker {
-                if let Ok(entry) = result {
-                    if entry.file_type().map(|ft| ft.is_file()).unwrap_or(false) {
-                        // 注意：这里的 path 需要转换为相对于 root 的路径
-                        if let Ok(rel_path) = entry.path().strip_prefix(root) {
-                            files.insert(rel_path.to_path_buf());
-                        }
-                    }
+            for result in os_walker.flatten() {
+                if !result.file_type().map(|ft| ft.is_file()).unwrap_or(false) {
+                    continue;
+                }
+                // 注意：这里的 path 需要转换为相对于 root 的路径
+                if let Ok(rel_path) = result.path().strip_prefix(root) {
+                    files.insert(rel_path.to_path_buf());
                 }
             }
         }
@@ -551,6 +573,41 @@ mod tests {
         let files_set: HashSet<_> = files.iter().collect();
         assert!(files_set.contains(&PathBuf::from("normal.txt")));
         assert!(files_set.contains(&PathBuf::from("originSource").join("test.txt")));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_list_files_normal_behavior() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let root = temp_dir.path();
+
+        // Initialize git repo (required for .gitignore to be respected by ignore crate usually)
+        Command::new("git").arg("init").current_dir(root).output()?;
+
+        // 1. Create .gitignore
+        let gitignore_path = root.join(".gitignore");
+        let mut gitignore = File::create(gitignore_path)?;
+        writeln!(gitignore, "ignored.txt")?;
+
+        // 2. Create ignored file
+        File::create(root.join("ignored.txt"))?;
+
+        // 3. Create normal file
+        File::create(root.join("normal.txt"))?;
+
+        // 4. Create sub directory and file
+        let subdir = root.join("subdir");
+        fs::create_dir(&subdir)?;
+        File::create(subdir.join("sub.txt"))?;
+
+        // 5. Run list_files (without originSource force inclusion)
+        let files = list_files(root, false)?;
+        let files_set: HashSet<_> = files.iter().collect();
+
+        assert!(files_set.contains(&PathBuf::from("normal.txt")));
+        assert!(files_set.contains(&PathBuf::from("subdir").join("sub.txt")));
+        assert!(!files_set.contains(&PathBuf::from("ignored.txt")));
 
         Ok(())
     }

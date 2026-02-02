@@ -1,77 +1,81 @@
-# bsr 项目管理工具
+# bsr Project Management Tool
 
-`bsr` 是一个用于高效管理 Bisheng 项目及其子仓库状态的 Rust 命令行工具。
+`bsr` is a Rust command-line tool designed for efficiently managing Bisheng projects and their sub-repository statuses.
 
-## 已实现命令
+## Implemented Commands
 
-### 1. 添加检索项目 (`add`)
-将指定目录下的 Bisheng 项目添加到管理列表中。
+### 1. Add Project (`add`)
+Add a Bisheng project from a specified directory to the management list.
 
 ```bash
 bsr add <directory>
 ```
 
-- **参数**: `<directory>` - 需要扫描的目录路径。
-- **功能**: 递归检索该目录下所有符合条件的 Bisheng 项目，并将其记录在本地配置中，方便后续快速访问。
+- **Arguments**: `<directory>` - The directory path to scan.
+- **Function**: Recursively searches for all eligible Bisheng projects under that directory and records them in the local configuration for quick access later.
 
-### 2. 列出项目 (`list` / `ls`)
-查看并选择已添加的 Bisheng 项目。
+### 2. List Projects (`list` / `ls`)
+View and select added Bisheng projects.
 
 ```bash
 bsr list
-# 或者使用别名
+# Or use the alias
 bsr ls
 ```
 
-- **功能**: 
-  - 展示所有已记录的项目列表。
-  - 提供交互式选择界面（使用 `inquire`）。
-  - 选中后会显示项目的完整路径。
+- **Function**:
+  - Displays a list of all recorded projects.
+  - Provides an interactive selection interface (using `inquire`).
+  - Shows the full path of the project upon selection.
 
-### 3. 查看子仓库状态 (`status`)
-检查项目中 `originSource` 目录下各组件的 Git 状态。
+### 3. View Sub-repository Status (`status`)
+Check the Git status of components under the `originSource` directory in a project.
 
 ```bash
 bsr status [directory] [options]
 ```
 
-- **参数**: `[directory]` - 目标项目目录，默认为当前目录 `.`。
-- **选项**:
-  - `-a, --all`: 显示所有仓库的状态。默认情况下，仅显示有未提交修改的仓库。
-- **功能**: 
-  - 递归扫描 `originSource` 目录。
-  - 显示每个子仓库的当前分支。
-  - 标记 `clean`（无修改）或 `modified`（有修改）。
-  - 列出具体的修改文件列表。
-  - 显示 Stash 的数量（如果有）。
+- **Arguments**: `[directory]` - Target project directory, defaults to the current directory `.`.
+- **Options**:
+  - `-a, --all`: Show status for all repositories. By default, only repositories with uncommitted changes are shown.
+- **Function**:
+  - Recursively scans the `originSource` directory.
+  - Displays the current branch of each sub-repository.
+  - Marks as `clean` (no changes) or `modified` (has changes).
+  - Lists specific modified files.
+  - Shows the number of Stashes (if any).
 
-### 4. 目录对比 (`compare`)
-对比两个目录之间的差异，专为 Bisheng 项目结构优化。
+### 4. Directory Comparison (`compare`)
+Compare differences between two directories, optimized for Bisheng project structures.
 
 ```bash
 bsr compare [directory] [options]
 ```
 
-- **参数**: `[directory]` - 要添加或对比的目录路径，默认为当前目录 `.`。
-- **选项**:
-  - `-C, --context <n>`: 设置 Diff 输出显示的上下文行数（默认为 3）。
-- **功能**:
-  - **待比对区管理**:
-    - 首次运行会将指定目录添加到“待比对区”。
-    - 再次运行（指定另一个目录）时，会提示用户：
-      - 开始对比（Start comparison）
-      - 替换待比对区目录（Replace waiting area）
-      - 取消
-  - **智能对比**:
-    - **结构检查**: 如果两个目录结构差异过大，会自动停止对比。
-    - **originSource 优化**: 针对 `originSource` 下的组件仓库，会优先检查 Git Tag 和状态。如果版本一致且无未提交修改，则视为相同，跳过耗时的文件内容对比。
-    - **可视化输出**:
-      - 使用颜色区分新增（绿色）、删除（红色）和修改。
-      - 支持行内差异高亮显示。
-      - 自动忽略 `.git`、隐藏文件和 `.gitignore` 中列出的文件。
+- **Arguments**: `[directory]` - Directory path to add or compare, defaults to the current directory `.`.
+- **Options**:
+  - `-C, --context <n>`: Set the number of context lines shown in Diff output (default is 3).
+- **Function**:
+  - **Waiting Area Management**:
+    - The first run adds the specified directory to the "Waiting Area".
+    - Running it again (specifying another directory) prompts the user to:
+      - Start comparison
+      - Replace waiting area directory
+      - Cancel
+  - **Smart Comparison**:
+    - **Structure Check**: Automatically stops comparison if the directory structures are too different.
+    - **originSource Optimization**: For component repositories under `originSource`, prioritizes checking Git Tags and status. If versions match and there are no uncommitted changes, it's considered identical, skipping time-consuming file content comparison.
+    - **Visual Output**:
+      - Uses colors to distinguish additions (Green), deletions (Red), and modifications.
+      - Supports inline difference highlighting.
+      - Automatically ignores `.git`, hidden files, and files listed in `.gitignore`.
+  - **Report Generation**:
+    - Comparison results are automatically saved as text files, typically at `~/.config/bsr/reports/diff_YYYYMMDD_HHMMSS.txt`.
+    - ANSI color codes are stripped from the report for easy viewing.
+    - Upon completion, offers an option (Open / Cancel) to open the generated report file directly in VS Code.
 
-## 规划中的命令
+## Planned Commands
 
-以下命令目前尚未实现，将在后续版本中推出：
+The following commands are not yet implemented and will be released in future versions:
 
-- `bsr start`: 启动项目。
+- `bsr start`: Start the project.

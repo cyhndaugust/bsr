@@ -3,6 +3,7 @@
 //! 包含所有子命令的具体实现逻辑。
 
 pub mod add;
+pub mod compare;
 pub mod list;
 pub mod status;
 
@@ -19,6 +20,7 @@ pub fn handle_subcommands(args: Args) -> anyhow::Result<()> {
             Subcommands::Add { dir } => add::handle(dir),
             Subcommands::List => list::handle(),
             Subcommands::Status { dir, all } => status::handle(dir, all),
+            Subcommands::Compare { dir, context } => compare::handle(dir, context),
         },
     }
 }

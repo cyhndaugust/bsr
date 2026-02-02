@@ -11,32 +11,46 @@ use anyhow::Context;
 use crate::types::DirectoryNode;
 
 const FILE_NAME: &str = "projects.json";
+const COMPARE_FILE_NAME: &str = "compare_pending";
 
-/// 获取存储文件的绝对路径
-///
-/// 优先尝试在用户的配置目录下创建 `~/.config/bsr/projects.json`。
-/// 如果失败，则回退到当前目录下的 `projects.json`。
-pub fn get_file_path() -> PathBuf {
+/// 获取配置目录
+fn get_config_dir() -> PathBuf {
     if let Some(mut path) = dirs::home_dir() {
         path.push(".config");
         path.push("bsr");
 
-        // 尝试创建目录（如果不存在）。如果创建失败（例如权限被拒绝），回退到本地文件。
-        if !path.exists() {
-            if fs::create_dir_all(&path).is_err() {
-                return PathBuf::from(FILE_NAME);
-            }
+        // 尝试创建目录（如果不存在）。
+        if !path.exists() && fs::create_dir_all(&path).is_err() {
+            return PathBuf::from(".");
         }
-        path.push(FILE_NAME);
+
+        // 检查写权限
+        let test_file = path.join(".perm_test");
+        if fs::write(&test_file, "").is_err() {
+            return PathBuf::from(".");
+        }
+        let _ = fs::remove_file(test_file);
+
         return path;
     }
-    PathBuf::from(FILE_NAME)
+    PathBuf::from(".")
+}
+
+/// 获取存储文件的绝对路径
+pub fn get_file_path() -> PathBuf {
+    let mut path = get_config_dir();
+    path.push(FILE_NAME);
+    path
+}
+
+/// 获取待比对目录存储文件的绝对路径
+pub fn get_compare_file_path() -> PathBuf {
+    let mut path = get_config_dir();
+    path.push(COMPARE_FILE_NAME);
+    path
 }
 
 /// 从文件中读取存储的项目数据
-///
-/// # Returns
-/// * `Result<Option<DirectoryNode>>` - 读取成功返回目录树根节点，文件不存在或内容为空返回 None
 pub fn read_project_file() -> anyhow::Result<Option<DirectoryNode>> {
     let path = get_file_path();
 
@@ -57,29 +71,53 @@ pub fn read_project_file() -> anyhow::Result<Option<DirectoryNode>> {
 }
 
 /// 将项目数据写入存储文件
-///
-/// 使用临时文件进行原子写入，以保证数据的一致性。
-///
-/// # Arguments
-/// * `dir_node` - 要存储的目录树根节点
 pub fn write_project_file(dir_node: DirectoryNode) -> anyhow::Result<()> {
     let path = get_file_path();
     let dn_json = serde_json::to_string_pretty(&dir_node)?;
 
     // 尝试原子写入
     let dir = path.parent().unwrap_or_else(|| std::path::Path::new("."));
-    if let Ok(mut temp_file) = tempfile::NamedTempFile::new_in(dir) {
-        if temp_file.write_all(dn_json.as_bytes()).is_ok() {
-            if let Err(_) = temp_file.persist(&path) {
-                // 如果持久化失败（例如跨设备链接错误或权限问题），回退到直接写入
-                fs::write(&path, dn_json)?;
-            }
-            return Ok(());
+    if let Ok(mut temp_file) = tempfile::NamedTempFile::new_in(dir)
+        && temp_file.write_all(dn_json.as_bytes()).is_ok()
+    {
+        if temp_file.persist(&path).is_err() {
+            fs::write(&path, dn_json)?;
         }
+        return Ok(());
     }
 
-    // 如果临时文件创建/写入失败，回退到直接写入
     fs::write(&path, dn_json)?;
 
+    Ok(())
+}
+
+/// 读取待比对的目录路径
+pub fn read_pending_compare() -> anyhow::Result<Option<PathBuf>> {
+    let path = get_compare_file_path();
+    if !path.exists() {
+        return Ok(None);
+    }
+    let content = fs::read_to_string(&path)?;
+    if content.trim().is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(PathBuf::from(content.trim())))
+}
+
+/// 写入待比对的目录路径
+pub fn write_pending_compare(dir: &PathBuf) -> anyhow::Result<()> {
+    let path = get_compare_file_path();
+    // 使用绝对路径存储
+    let abs_path = fs::canonicalize(dir).unwrap_or(dir.clone());
+    fs::write(&path, abs_path.to_string_lossy().as_bytes())?;
+    Ok(())
+}
+
+/// 清除待比对的目录路径
+pub fn clear_pending_compare() -> anyhow::Result<()> {
+    let path = get_compare_file_path();
+    if path.exists() {
+        fs::remove_file(path)?;
+    }
     Ok(())
 }

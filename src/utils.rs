@@ -40,15 +40,14 @@ pub fn get_git_status(path: &Path) -> anyhow::Result<GitStatusInfo> {
 
             for name in tags.iter().flatten() {
                 if let Ok(obj) = repo.revparse_single(name) {
-                    if let Some(tag_id) = obj
+                    let tag_id_opt = obj
                         .as_tag()
                         .map(|t| t.target_id())
-                        .or_else(|| Some(obj.id()))
-                    {
-                        if Some(tag_id) == head_id {
-                            tag_name = Some(name.to_string());
-                            break;
-                        }
+                        .or_else(|| Some(obj.id()));
+
+                    if tag_id_opt.is_some() && tag_id_opt == head_id {
+                        tag_name = Some(name.to_string());
+                        break;
                     }
                 }
             }
@@ -133,12 +132,10 @@ pub fn path_to_dir_string(path: &Path) -> String {
 /// # Returns
 /// * `PathBuf` - 转换后的路径
 pub fn get_tilde_path(path: &Path) -> PathBuf {
-    if let Some(home) = dirs::home_dir() {
-        if let Ok(stripped) = path.strip_prefix(&home) {
-            let mut p = PathBuf::from("~");
-            p.push(stripped);
-            return p;
-        }
+    if let Some(home) = dirs::home_dir()
+        && let Ok(stripped) = path.strip_prefix(&home)
+    {
+        return Path::new("~").join(stripped);
     }
     path.to_path_buf()
 }

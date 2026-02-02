@@ -61,7 +61,7 @@ pub fn handle(dir: PathBuf, all: bool) -> anyhow::Result<()> {
 
                     if !status.is_clean {
                         for file in status.modified_files {
-                            println!("  {} {}", "-", file);
+                            println!("  - {}", file);
                         }
                     }
                 }

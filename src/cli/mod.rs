@@ -49,6 +49,24 @@ pub enum Subcommands {
         )]
         all: bool,
     },
+    /// 对比两个目录的差异
+    #[command(about = "Compare two directories.")]
+    Compare {
+        /// 要对比的目录路径（默认为当前目录）
+        #[arg(help = "A directory to compare.")]
+        #[arg(value_parser = validate_dir)]
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+
+        /// 显示上下文行数
+        #[arg(
+            short = 'C',
+            long = "context",
+            help = "Lines of context to show.",
+            default_value_t = 3
+        )]
+        context: usize,
+    },
 }
 
 /// 验证给定的路径字符串是否为存在的目录

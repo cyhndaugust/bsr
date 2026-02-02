@@ -8,6 +8,7 @@ pub fn handle() -> Result<()> {
         .bin_name("bsr")
         .show_download_progress(true)
         .current_version(cargo_crate_version!())
+        .no_confirm(true)
         .build()?
         .update()?;
 

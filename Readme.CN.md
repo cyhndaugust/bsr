@@ -12,6 +12,12 @@
 curl -fsSL https://raw.githubusercontent.com/cyhndaugust/bsr/main/install.sh | bash
 ```
 
+该脚本会：
+1. 自动检测您的系统架构（Intel 或 Apple Silicon）。
+2. 下载最新的二进制发行版。
+3. 将其安装到 `~/.local/bin`。
+4. 如果 `~/.local/bin` 不在您的 `PATH` 中，脚本会自动将其添加到您的 Shell 配置文件中（支持 Zsh 和 Bash）。
+
 ### 升级
 
 安装完成后，你可以随时使用以下命令将 `bsr` 升级到最新版本：

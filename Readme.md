@@ -12,6 +12,12 @@ You can install `bsr` easily using the installation script:
 curl -fsSL https://raw.githubusercontent.com/cyhndaugust/bsr/main/install.sh | bash
 ```
 
+The script will:
+1. Automatically detect your architecture (Intel or Apple Silicon).
+2. Download the latest binary release.
+3. Install it to `~/.local/bin`.
+4. Automatically add `~/.local/bin` to your `PATH` if it's not already there (supports Zsh and Bash).
+
 ### Upgrade
 
 Once installed, you can upgrade `bsr` to the latest version at any time using:

@@ -171,14 +171,17 @@ fn check_structure_similarity(files_a: &[PathBuf], files_b: &[PathBuf]) -> Resul
     Ok(similarity >= 0.3)
 }
 
-/// 列出目录下所有文件（相对路径），遵循 gitignore
+/// 列出目录下所有文件（相对路径），遵循 gitignore，但强制包含 originSource
 fn list_files(root: &Path) -> Result<Vec<PathBuf>> {
-    let mut files = Vec::new();
-    let walker = WalkBuilder::new(root)
-        .hidden(true) // 忽略隐藏文件
-        .git_ignore(true) // 遵循 gitignore
+    let mut files = HashSet::new();
+
+    // 1. 主遍历：遵循所有 gitignore 规则
+    let mut builder = WalkBuilder::new(root);
+    builder.hidden(true);
+    builder.git_ignore(true);
+
+    let walker = builder
         .filter_entry(|e| {
-            // 过滤 .git 目录
             if e.file_name() == ".git" {
                 return false;
             }
@@ -187,19 +190,87 @@ fn list_files(root: &Path) -> Result<Vec<PathBuf>> {
         .build();
 
     for result in walker {
-        match result {
-            Ok(entry) => {
+        if let Ok(entry) = result {
+            if entry.file_type().map(|ft| ft.is_file()).unwrap_or(false) {
+                if let Ok(rel_path) = entry.path().strip_prefix(root) {
+                    files.insert(rel_path.to_path_buf());
+                }
+            }
+        }
+    }
+
+    // 2. originSource 专项遍历：忽略父目录的 gitignore，但遵循内部的 gitignore
+    let origin_source_path = root.join("originSource");
+    if origin_source_path.exists() {
+        let mut os_builder = WalkBuilder::new(&origin_source_path);
+        os_builder.hidden(true);
+        os_builder.git_ignore(true);
+        os_builder.parents(false); // 关键：不读取上层目录的 gitignore
+
+        let os_walker = os_builder
+            .filter_entry(|e| {
+                if e.file_name() == ".git" {
+                    return false;
+                }
+                true
+            })
+            .build();
+
+        for result in os_walker {
+            if let Ok(entry) = result {
                 if entry.file_type().map(|ft| ft.is_file()).unwrap_or(false) {
-                    // 获取相对路径
+                    // 注意：这里的 path 需要转换为相对于 root 的路径
                     if let Ok(rel_path) = entry.path().strip_prefix(root) {
-                        files.push(rel_path.to_path_buf());
+                        files.insert(rel_path.to_path_buf());
                     }
                 }
             }
-            Err(err) => eprintln!("Error walking directory: {}", err),
         }
     }
-    Ok(files)
+
+    let mut result: Vec<_> = files.into_iter().collect();
+    result.sort();
+    Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::{self, File};
+    use std::io::Write;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_list_files_includes_ignored_origin_source() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let root = temp_dir.path();
+
+        // 1. Create .gitignore ignoring originSource
+        let gitignore_path = root.join(".gitignore");
+        let mut gitignore = File::create(gitignore_path)?;
+        writeln!(gitignore, "originSource")?;
+
+        // 2. Create originSource directory and a file inside
+        let origin_source = root.join("originSource");
+        fs::create_dir(&origin_source)?;
+        let file_path = origin_source.join("test.txt");
+        let mut file = File::create(&file_path)?;
+        writeln!(file, "content")?;
+
+        // 3. Create a normal file
+        let normal_file = root.join("normal.txt");
+        File::create(&normal_file)?;
+
+        // 4. Run list_files
+        let files = list_files(root)?;
+
+        // 5. Assertions
+        let files_set: HashSet<_> = files.iter().collect();
+        assert!(files_set.contains(&PathBuf::from("normal.txt")));
+        assert!(files_set.contains(&PathBuf::from("originSource").join("test.txt")));
+
+        Ok(())
+    }
 }
 
 struct CompareContext {

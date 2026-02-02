@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 /// 命令行顶级参数结构体
 #[derive(Debug, Parser)]
 #[command(version = env!("CARGO_PKG_VERSION"))]
-#[command(about = "Bisheng Rust CLI - 毕昇项目管理工具")]
+#[command(about = "Bisheng Rust CLI")]
 pub struct Args {
     /// 子命令
     #[command(subcommand)]
